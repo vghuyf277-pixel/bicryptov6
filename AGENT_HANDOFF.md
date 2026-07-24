@@ -140,6 +140,8 @@ Surgical edits to compiled JavaScript. Every new edit must be documented here.
 | `api/(ext)/ecosystem/utils/scylla/client.js` | 25 | `connectTimeout: 2000` → `connectTimeout: 15000` | 2026-05-29 | 2s timeout too short for cross-container Railway connection |
 | `api/(ext)/ecosystem/utils/scylla/client.js` | 47–48 | `MAX_RETRIES: 5→20`, `INITIAL_DELAY: 2000→15000` | 2026-05-29 | App gave up after ~64s; Cassandra takes 60–90s to start |
 | `utils/exchange.js` | 141–152 | Public mode fetches `proxyUrl` from DB before creating ccxt instance | 2026-05-29 | Public mode ignored the `proxyUrl` DB field — admin proxy had no effect without API keys |
+| `utils/cache.js` | 21–55, 81–135 | `getCache()` returns `{}` on Redis error; `getSettings()`/`getExtensions()` fall back to DB instead of re-throwing; `loadSettingsFromDB()`/`loadExtensionsFromDB()` populate in-memory map first then wrap Redis pipeline in try/catch | 2026-07-24 | Any Redis hiccup after a backend restart caused every API call to return 500 — settings couldn't load, login/PoW/all routes broken |
+| `utils/pow-captcha.js` | 22–90 | Wrap all Redis calls in try/catch; rate-limit check and challenge storage degrade gracefully when Redis is unavailable; `verifyPowSolution` returns `{valid:true}` if Redis is unreachable | 2026-07-24 | Raw `redis.get()`/`redis.setex()` calls with no error handling — PoW challenge endpoint returned 500 when Redis was down, blocking all login attempts |
 
 ---
 
