@@ -21,12 +21,18 @@ const CHALLENGE_EXPIRY_MS = 5 * 60 * 1000;
 const MAX_CHALLENGES_PER_MINUTE = 10;
 async function generatePowChallenge(action, clientIp) {
     if (clientIp) {
-        const rateLimitKey = `pow_rate:${clientIp}`;
-        const currentCount = await redis.get(rateLimitKey);
-        if (currentCount && Number(currentCount) >= MAX_CHALLENGES_PER_MINUTE) {
-            throw new Error("Too many challenge requests. Please wait a moment.");
+        try {
+            const rateLimitKey = `pow_rate:${clientIp}`;
+            const currentCount = await redis.get(rateLimitKey);
+            if (currentCount && Number(currentCount) >= MAX_CHALLENGES_PER_MINUTE) {
+                throw new Error("Too many challenge requests. Please wait a moment.");
+            }
+            await redis.setex(rateLimitKey, 60, String(Number(currentCount || 0) + 1));
         }
-        await redis.setex(rateLimitKey, 60, String(Number(currentCount || 0) + 1));
+        catch (redisError) {
+            if (redisError.message.includes("Too many")) throw redisError;
+            console_1.logger.warn("POW", `Redis rate-limit check failed (skipping): ${redisError.message}`);
+        }
     }
     const cacheManager = cache_1.CacheManager.getInstance();
     const difficultyLevel = (await cacheManager.getSetting("powCaptchaDifficulty")) || "medium";
@@ -41,7 +47,12 @@ async function generatePowChallenge(action, clientIp) {
         action,
     };
     const challengeKey = `pow_challenge:${challenge}`;
-    await redis.setex(challengeKey, Math.floor(CHALLENGE_EXPIRY_MS / 1000), JSON.stringify(challengeData));
+    try {
+        await redis.setex(challengeKey, Math.floor(CHALLENGE_EXPIRY_MS / 1000), JSON.stringify(challengeData));
+    }
+    catch (redisError) {
+        console_1.logger.warn("POW", `Redis unavailable; challenge will not be stored (PoW verification will be skipped): ${redisError.message}`);
+    }
     console_1.logger.debug("POW", `Generated challenge for action: ${action}, difficulty: ${difficulty}`);
     return {
         challenge,
@@ -52,7 +63,14 @@ async function generatePowChallenge(action, clientIp) {
 }
 async function verifyPowSolution(solution, expectedAction) {
     const challengeKey = `pow_challenge:${solution.challenge}`;
-    const storedData = await redis.get(challengeKey);
+    let storedData;
+    try {
+        storedData = await redis.get(challengeKey);
+    }
+    catch (redisError) {
+        console_1.logger.warn("POW", `Redis unavailable during verification; accepting solution without cache check: ${redisError.message}`);
+        return { valid: true };
+    }
     if (!storedData) {
         console_1.logger.warn("POW", "Challenge not found or expired");
         return { valid: false, error: "Challenge expired or invalid. Please refresh and try again." };

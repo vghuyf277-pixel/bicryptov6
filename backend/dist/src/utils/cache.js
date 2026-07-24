@@ -30,8 +30,14 @@ class CacheManager {
                 }
             }
             catch (error) {
-                console_1.logger.error("CACHE", `Failed to load settings: ${error.message}`, error);
-                throw error;
+                console_1.logger.error("CACHE", `Failed to load settings from Redis, falling back to DB: ${error.message}`);
+                try {
+                    await this.loadSettingsFromDB();
+                }
+                catch (dbError) {
+                    console_1.logger.error("CACHE", `Failed to load settings from DB: ${dbError.message}`, dbError);
+                    throw dbError;
+                }
             }
         }
         return this.settings;
@@ -48,8 +54,14 @@ class CacheManager {
                 }
             }
             catch (error) {
-                console_1.logger.error("CACHE", `Failed to load extensions: ${error.message}`, error);
-                throw error;
+                console_1.logger.error("CACHE", `Failed to load extensions from Redis, falling back to DB: ${error.message}`);
+                try {
+                    await this.loadExtensionsFromDB();
+                }
+                catch (dbError) {
+                    console_1.logger.error("CACHE", `Failed to load extensions from DB: ${dbError.message}`, dbError);
+                    throw dbError;
+                }
             }
         }
         return this.extensions;
@@ -85,12 +97,19 @@ class CacheManager {
             return;
         }
         const settingsData = await db_1.models.settings.findAll();
-        const pipeline = redis.pipeline();
         settingsData.forEach((setting) => {
             this.settings.set(setting.key, setting.value);
-            pipeline.hset(this.settingsKey, setting.key, JSON.stringify(setting.value));
         });
-        await pipeline.exec();
+        try {
+            const pipeline = redis.pipeline();
+            settingsData.forEach((setting) => {
+                pipeline.hset(this.settingsKey, setting.key, JSON.stringify(setting.value));
+            });
+            await pipeline.exec();
+        }
+        catch (redisError) {
+            console_1.logger.warn("CACHE", `Redis pipeline failed during settings load (settings still loaded from DB): ${redisError.message}`);
+        }
     }
     async loadExtensionsFromDB() {
         var _a;
@@ -101,19 +120,33 @@ class CacheManager {
         const extensionsData = await db_1.models.extension.findAll({
             where: { status: true },
         });
-        const pipeline = redis.pipeline();
         extensionsData.forEach((extension) => {
             this.extensions.set(extension.name, extension);
-            pipeline.hset(this.extensionsKey, extension.name, JSON.stringify(extension));
         });
-        await pipeline.exec();
+        try {
+            const pipeline = redis.pipeline();
+            extensionsData.forEach((extension) => {
+                pipeline.hset(this.extensionsKey, extension.name, JSON.stringify(extension));
+            });
+            await pipeline.exec();
+        }
+        catch (redisError) {
+            console_1.logger.warn("CACHE", `Redis pipeline failed during extensions load (extensions still loaded from DB): ${redisError.message}`);
+        }
     }
     async getCache(key) {
-        const cachedData = await redis.hgetall(key);
-        return Object.keys(cachedData).reduce((acc, field) => {
-            acc[field] = JSON.parse(cachedData[field]);
-            return acc;
-        }, {});
+        try {
+            const cachedData = await redis.hgetall(key);
+            if (!cachedData) return {};
+            return Object.keys(cachedData).reduce((acc, field) => {
+                try { acc[field] = JSON.parse(cachedData[field]); } catch (_) { acc[field] = cachedData[field]; }
+                return acc;
+            }, {});
+        }
+        catch (error) {
+            console_1.logger.error("CACHE", `Redis hgetall failed for key ${key}: ${error.message}`);
+            return {};
+        }
     }
     async clearCache() {
         try {
