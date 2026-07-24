@@ -397,6 +397,11 @@ async function run() {
     "UPDATE exchange_currency SET status = 0 WHERE currency = 'MATIC'");
   await q("deactivate MATIC/USDT exchange_market (KuCoin uses POL/USDT)",
     "UPDATE exchange_market SET status = 0 WHERE currency = 'MATIC'");
+  // KuCoin does not carry BTC-quoted pairs (SOL/BTC, ETH/BTC, etc.).
+  // processCurrenciesPrices crashes on the first missing symbol and blocks
+  // ALL spot price updates every 2 minutes. Deactivate all BTC-quoted rows.
+  await q("deactivate BTC-quoted exchange_market rows (not on KuCoin)",
+    "UPDATE exchange_market SET status = 0 WHERE pair = 'BTC'");
 
   // BTC is missing from exchange_currency — the price cron iterates this table
   // to build its fetch list. Without a BTC row the cron never fetches a BTC price
