@@ -1,0 +1,129 @@
+AI
+
+
+100%
+
+
+
+
+
+
+
+
+Publish a sharable version of your App, unaffected by changes made in the project editor
+Manage custom domains for your deployed App
+View traffic, request metrics, resource usage, and analytics for your deployed App
+Find, fix, and monitor SEO and growth opportunities
+Stores structured data such as user profiles, game scores, and product catalogs.
+Let users log in to your App using a prebuilt login page
+Find, fix, and monitor security vulnerabilities and privacy issues
+Host and save uploads like images, videos, and documents
+Connect to Replit-native and external services
+Version control for your App
+Store sensitive information (like API keys) securely in your App
+Manage skills that extend Agent capabilities
+Secrets
+
+
+
+Secrets are accessible to anyone who has access to this App. To restrict secret access, you must update App invite permissions. For more information, visit our documentation.
+
+Filter Secrets by name
+
+
+
+
+
+
+
+
+Configurations
+Configurations are similar to secrets, but should only be used for non-sensitive information. They're useful for having a variable that's different between your published app and when testing on Replit.
+
+logs.1784860642864_1784860662368.json
+5 hours ago
+
+Show less
+Reading logs
+
+Reading logs
+
+Ran a Node.js script
+Fixing SOL/BTC cron errors
+
+Fixing SOL/BTC cron errors
+The SOL/BTC cron error is completely gone. Clean boot. Here's the full picture:
+
+✅ Everything working
+Boot completed in ~1 minute (fast path — schema already exists)
+All features activated, all settings applied
+Bitcoin scanner connected via Mempool.space
+KuCoin running in public mode (charts and prices working, no API keys needed)
+Zero processCurrenciesPrices errors — the fix held
+⚠️ Only one remaining error (expected)
+ECONNREFUSED 127.0.0.1:9042 — ScyllaDB retrying...
+
+This is Cassandra/ScyllaDB not being found, which is completely expected — you haven't added a Cassandra service to Railway. It retries with exponential backoff (15s → 30s → 60s → 120s...) and doesn't affect anything else. Spot trading, futures, binary options, and all other features work fine without it. You can ignore this unless you decide to add Cassandra later for on-chain ecosystem deposits.
+
+Your platform is running cleanly. The two things that would add the most value next are KuCoin API keys (enables crypto deposit addresses for users) and SMTP credentials (enables signup confirmation emails) — both covered in RAILWAY_DEPLOY.md Step 5.
+
+
+Checkpoint made
+5 hours ago
+
+Worked for 38 seconds
+
+logs.1784877037485_1784877056023.json
+Check both the logs, code and dB as to why login isn't working, the superadmin and presumably the whole login, sign up flow
+
+17 minutes ago
+
+Show less
+Simultaneous log, DB, code checking
+
+Simultaneous log, DB, code checking
+Let me read the logs and simultaneously check the DB and relevant code for login issues.
+
+
+Ran a Node.js script
+
+Ran a Node.js script
+Checking backend connectivity
+
+Checking backend connectivity
+The key error from the logs is:
+
+Failed to proxy http://127.0.0.1:4000/api/auth/pow/challenge?action=login Error: connect ECONNREFUSED 127.0.0.1:4000
+Failed to proxy http://127.0.0.1:4000/api/auth/login Error: connect ECONNREFUSED 127.0.0.1:4000
+
+The backend on port 4000 is not running! The frontend is trying to proxy requests to 127.0.0.1:4000 but nothing is listening there.
+
+The boot sequence completed (activate-all ran), but then at 02:44 (about 10 minutes after boot) the login attempt fails because the backend is not accessible on port 4000. So the backend must have started via PM2 during boot but then crashed sometime before the login attempt. I need to check the PM2 configuration to see what's supposed to be running on port 4000, and look at the production config to understand the setup better. I should also query the database to check the superadmin user state and any relevant settings.
+
+The smoking gun is right there in the logs:
+
+Failed to proxy http://127.0.0.1:4000/api/auth/login Error: connect ECONNREFUSED 127.0.0.1:4000
+
+The backend isn't running on port 4000 — login fails before it even reaches authentication. Let me check why PM2 isn't keeping it up, and inspect the DB in parallel.
+
+
+Show less
+
+Read production.config.js
+
+Searched for "pm2|PM2|backend|port 40…"
+
+Created a directory
+
+Listed files
+Debugging backend crash
+
+Debugging backend crash
+The DB query failed. Let me re-run it and also check the backend's main index.js to understand why it might be crashing on port 4000.
+
+Key findings so far:
+
+The backend is NOT running on port 4000 - ECONNREFUSED 127.0.0.1:4000
+PM2 is configured to run ./backend/dist/index.js on port 4000
+The backend entry point exists at backend/dist/index.js
+The login failure is because the backend process crashed or never started properly. The logs we have don't show the PM2 startup logs or any backend crash logs - they cu...
